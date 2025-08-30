@@ -5,7 +5,7 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN
 });
 
-function formatDate() {
+function format_date() {
   const d = new Date();
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -15,44 +15,37 @@ function formatDate() {
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== 'POST') {
-      return res.status(405).json({ error: 'method_not_allowed' });
-    }
+    if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
     const { discord_id, discord_username } = req.body;
-    if (!discord_id || !discord_username) {
-      return res.status(400).json({ error: 'missing_fields' });
+    if (!discord_id || !discord_username) return res.status(400).json({ error: 'missing_fields' });
+
+    const today = format_date();
+    let uid_list = (await redis.get('uid_list')) || [];
+
+    let existing_user = uid_list.find(u => u.discord_id === discord_id);
+    if (existing_user) {
+      existing_user.last_execution = today;
+      await redis.set('uid_list', uid_list);
+      return res.json(existing_user);
     }
 
-    const today = formatDate();
-    let uidData = await redis.get(`uid:${discord_id}`);
-
-    if (uidData) {
-      // Update last_execution
-      uidData.last_execution = today;
-      await redis.set(`uid:${discord_id}`, uidData);
-      return res.json({ uid: uidData.uid, ...uidData });
-    }
-
-    // Generate new UID
-    const nextUID = (await redis.get('uid_counter')) || 0;
-    const newUID = nextUID + 1;
-
-    const newUserData = {
+    const new_uid = uid_list.length + 1;
+    const new_user = {
       discord_username,
       discord_id,
       first_execution: today,
       last_execution: today,
-      uid: newUID
+      uid: new_uid
     };
 
-    await redis.set(`uid:${discord_id}`, newUserData);
-    await redis.set('uid_counter', newUID);
+    uid_list.push(new_user);
+    await redis.set('uid_list', uid_list);
 
-    res.json(newUserData);
+    res.json(new_user);
 
   } catch (err) {
     console.error('Error in get_uid:', err);
     res.status(500).json({ error: 'internal_server_error', details: err.message });
   }
-}
+};
