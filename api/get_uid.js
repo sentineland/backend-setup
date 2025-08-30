@@ -5,7 +5,7 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN
 });
 
-function format_date() {
+function formatDate() {
   const d = new Date();
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -24,36 +24,33 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'missing_fields' });
     }
 
-    let uid_table = await redis.get('uid_table');
-    uid_table = uid_table || {};
-    const time = format_date();
+    const today = formatDate();
+    let uidData = await redis.get(`uid:${discord_id}`);
 
-    // Check existing discord_id
-    for (let uid in uid_table) {
-      if (uid_table[uid].discord_id === discord_id) {
-        if (!uid_table[uid].first_execution) uid_table[uid].first_execution = time;
-        uid_table[uid].last_execution = time;
-        await redis.set('uid_table', uid_table);
-        return res.json({
-          uid,
-          discord_username: uid_table[uid].discord_username,
-          first_execution: uid_table[uid].first_execution,
-          last_execution: uid_table[uid].last_execution
-        });
-      }
+    if (uidData) {
+      // Update last_execution
+      uidData.last_execution = today;
+      await redis.set(`uid:${discord_id}`, uidData);
+      return res.json({ uid: uidData.uid, ...uidData });
     }
 
-    // New UID
-    const new_uid = Object.keys(uid_table).length + 1;
-    uid_table[new_uid] = { discord_username, discord_id, first_execution: time, last_execution: time };
-    await redis.set('uid_table', uid_table);
+    // Generate new UID
+    const nextUID = (await redis.get('uid_counter')) || 0;
+    const newUID = nextUID + 1;
 
-    res.json({
-      uid: new_uid,
+    const newUserData = {
       discord_username,
-      first_execution: time,
-      last_execution: time
-    });
+      discord_id,
+      first_execution: today,
+      last_execution: today,
+      uid: newUID
+    };
+
+    await redis.set(`uid:${discord_id}`, newUserData);
+    await redis.set('uid_counter', newUID);
+
+    res.json(newUserData);
+
   } catch (err) {
     console.error('Error in get_uid:', err);
     res.status(500).json({ error: 'internal_server_error', details: err.message });
