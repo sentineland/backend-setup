@@ -5,26 +5,23 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-function format_date(date = new Date()) {
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
+function format_date() {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
-}
-
-function hours_between(date1, date2) {
-  try {
-    const d1 = new Date(date1.split("/").reverse().join("-"));
-    const d2 = new Date(date2.split("/").reverse().join("-"));
-    return Math.abs(d2 - d1) / 36e5;
-  } catch {
-    return Infinity;
-  }
 }
 
 async function get_uid_list() {
   const raw = await redis.get("uid_list");
-  return raw ? JSON.parse(raw) : [];
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    await redis.set("uid_list", "[]");
+    return [];
+  }
 }
 
 async function set_uid_list(uid_list) {
@@ -34,8 +31,16 @@ async function set_uid_list(uid_list) {
 async function cleanup_inactive_users() {
   let uid_list = await get_uid_list();
   const today = format_date();
-  uid_list = uid_list.filter((u) => hours_between(u.last_execution, today) <= 72);
-  uid_list.forEach((u, i) => (u.uid = i + 1));
+  uid_list = uid_list.filter(u => {
+    try {
+      const last = new Date(u.last_execution.split("/").reverse().join("-"));
+      const now = new Date(today.split("/").reverse().join("-"));
+      return Math.abs(now - last) / 36e5 <= 72;
+    } catch {
+      return false;
+    }
+  });
+  uid_list.forEach((u, i) => u.uid = i + 1);
   await set_uid_list(uid_list);
   console.log(`🧹 Cleanup done. Active users: ${uid_list.length}`);
 }
@@ -50,7 +55,7 @@ export default async function handler(req, res) {
     const today = format_date();
     let uid_list = await get_uid_list();
 
-    let existing_user = uid_list.find((u) => u.discord_id === discord_id);
+    let existing_user = uid_list.find(u => u.discord_id === discord_id);
     if (existing_user) {
       existing_user.last_execution = today;
       existing_user.in_game = in_game;
@@ -70,6 +75,7 @@ export default async function handler(req, res) {
     uid_list.push(new_user);
     await set_uid_list(uid_list);
     res.json(new_user);
+
   } catch (err) {
     console.error("Error in get_uid:", err);
     res.status(500).json({ error: "internal_server_error", details: err.message });
