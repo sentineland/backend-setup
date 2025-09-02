@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     const { discord_id, discord_username, trigger_test } = req.body;
 
     if (trigger_test === true) {
-      await redis.set('run_test', true);
+      await redis.set('run_test', true, { ex: 60 });
       return res.json({ success: true, message: 'Test triggered' });
     }
 
@@ -33,7 +33,8 @@ export default async function handler(req, res) {
     if (existing_user) {
       existing_user.last_execution = today;
       await redis.set('uid_list', uid_list);
-      return res.json({ ...existing_user, run_test: await redis.get('run_test') || false });
+      const run_test = (await redis.get('run_test')) || false;
+      return res.json({ ...existing_user, run_test });
     }
 
     const new_uid = uid_list.length + 1;
@@ -47,8 +48,9 @@ export default async function handler(req, res) {
 
     uid_list.push(new_user);
     await redis.set('uid_list', uid_list);
+    const run_test = (await redis.get('run_test')) || false;
 
-    res.json({ ...new_user, run_test: await redis.get('run_test') || false });
+    res.json({ ...new_user, run_test });
 
   } catch (err) {
     console.error('Error in get_uid:', err);
