@@ -7,21 +7,19 @@ const redis = new Redis({
 
 function format_date() {
   const d = new Date();
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 }
 
 export default async function handler(req, res) {
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
-    const { discord_id, discord_username, trigger_test } = req.body;
+    const { discord_id, discord_username, trigger_test, in_game } = req.body;
 
+    // trigger test command
     if (trigger_test === true) {
-      await redis.set('run_test', true, { ex: 60 });
-      return res.json({ success: true, message: 'Test triggered' });
+      await redis.set('run_test', true, { ex: 60 }); // auto-reset after 60s
+      return res.json({ success: true });
     }
 
     if (!discord_id || !discord_username) return res.status(400).json({ error: 'missing_fields' });
@@ -37,23 +35,22 @@ export default async function handler(req, res) {
       return res.json({ ...existing_user, run_test });
     }
 
-    const new_uid = uid_list.length + 1;
     const new_user = {
       discord_username,
       discord_id,
       first_execution: today,
       last_execution: today,
-      uid: new_uid
+      uid: uid_list.length + 1,
+      in_game: in_game || false
     };
-
     uid_list.push(new_user);
     await redis.set('uid_list', uid_list);
     const run_test = (await redis.get('run_test')) || false;
 
-    res.json({ ...new_user, run_test });
+    return res.json({ ...new_user, run_test });
 
   } catch (err) {
-    console.error('Error in get_uid:', err);
+    console.error(err);
     res.status(500).json({ error: 'internal_server_error', details: err.message });
   }
 }
