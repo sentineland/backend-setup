@@ -5,32 +5,30 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN
 });
 
-function hoursBetween(date1, date2) {
-  const d1 = new Date(date1.split('/').reverse().join('-'));
-  const d2 = new Date(date2.split('/').reverse().join('-'));
-  return Math.abs(d2 - d1) / 36e5;
+function daysBetween(date1, date2) {
+  const [d1, m1, y1] = date1.split('/').map(Number);
+  const [d2, m2, y2] = date2.split('/').map(Number);
+  const first = new Date(y1, m1 - 1, d1);
+  const second = new Date(y2, m2 - 1, d2);
+  return Math.floor((second - first) / (1000 * 60 * 60 * 24));
 }
 
-async function cleanupInactiveUsers() {
+async function cleanupInactiveUsers(today) {
   const raw = await redis.get('uid_list');
   let uid_list = raw ? JSON.parse(raw) : [];
-  const today = new Date();
-  uid_list = uid_list.filter(u => hoursBetween(u.last_execution, today.toLocaleDateString('en-GB')) <= 72);
+  uid_list = uid_list.filter(u => daysBetween(u.last_execution, today) <= 3);
   uid_list.forEach((u, i) => u.uid = i + 1);
   await redis.set('uid_list', JSON.stringify(uid_list));
+  return uid_list;
 }
 
 export default async function handler(req, res) {
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
-
     const { discord_id, discord_username, in_game = false, today } = req.body;
     if (!discord_id || !discord_username || !today) return res.status(400).json({ error: 'missing_fields' });
 
-    await cleanupInactiveUsers();
-
-    const raw = await redis.get('uid_list');
-    const uid_list = raw ? JSON.parse(raw) : [];
+    let uid_list = await cleanupInactiveUsers(today);
     const user_map = Object.fromEntries(uid_list.map(u => [u.discord_id, u]));
     let existing_user = user_map[discord_id];
 
@@ -47,7 +45,7 @@ export default async function handler(req, res) {
     res.json(new_user);
 
   } catch (err) {
-    console.error(err);
+    console.error('Error in get_uid:', err);
     res.status(500).json({ error: 'internal_server_error', details: err.message });
   }
 };
