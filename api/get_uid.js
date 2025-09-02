@@ -12,9 +12,16 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: 'method_not_allowed' });
     }
 
-    const { discord_id, discord_username, in_game = false, today } = req.body;
+    const { discord_id = null, discord_username = null, in_game = false, today = null } = req.body || {};
+
     if (!discord_id || !discord_username || !today) {
-      return res.status(400).json({ error: 'missing_fields' });
+      return res.json({
+        uid: "Nil",
+        first_execution: "Nil",
+        last_execution: "Nil",
+        discord_username: "Nil",
+        in_game: false
+      });
     }
 
     let uid_list = (await redis.get('uid_list')) || [];
@@ -38,10 +45,19 @@ export default async function handler(req, res) {
 
     uid_list.push(new_user);
     await redis.set('uid_list', uid_list);
+
     res.json(new_user);
 
   } catch (err) {
-    console.error('Error in get_uid:', err);
-    res.status(500).json({ error: 'internal_server_error', details: err.message });
+    console.error(err);
+    res.status(500).json({
+      uid: "Nil",
+      first_execution: "Nil",
+      last_execution: "Nil",
+      discord_username: "Nil",
+      in_game: false,
+      error: 'internal_server_error',
+      details: err.message
+    });
   }
-};
+}
