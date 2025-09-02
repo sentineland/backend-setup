@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import { Redis } from '@upstash/redis';
 
 const redis = new Redis({
@@ -7,10 +8,14 @@ const redis = new Redis({
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'method_not_allowed' });
+    }
 
     const { discord_id, discord_username, in_game = false, today } = req.body;
-    if (!discord_id || !discord_username || !today) return res.status(400).json({ error: 'missing_fields' });
+    if (!discord_id || !discord_username || !today) {
+      return res.status(400).json({ error: 'missing_fields' });
+    }
 
     let uid_list = (await redis.get('uid_list')) || [];
 
