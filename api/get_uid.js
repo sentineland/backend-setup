@@ -37,28 +37,43 @@ async function cleanup_inactive_users() {
   uid_list = uid_list.filter((u) => hours_between(u.last_execution, today) <= 72);
   uid_list.forEach((u, i) => (u.uid = i + 1));
   await set_uid_list(uid_list);
-  console.log(`cleanup done, active users: ${uid_list.length}`);
+  console.log(`🧹 Cleanup done. Active users: ${uid_list.length}`);
 }
 
-export async function register_or_update_user({ discord_id, discord_username, in_game = false }) {
-  const today = format_date();
-  let uid_list = await get_uid_list();
-  let existing_user = uid_list.find((u) => u.discord_id === discord_id);
-  if (existing_user) {
-    existing_user.last_execution = today;
-    existing_user.in_game = in_game;
-  } else {
-    uid_list.push({
+export default async function handler(req, res) {
+  try {
+    if (req.method !== "POST") return res.status(405).json({ error: "method_not_allowed" });
+
+    const { discord_id, discord_username, in_game = false } = req.body;
+    if (!discord_id || !discord_username) return res.status(400).json({ error: "missing_fields" });
+
+    const today = format_date();
+    let uid_list = await get_uid_list();
+
+    let existing_user = uid_list.find((u) => u.discord_id === discord_id);
+    if (existing_user) {
+      existing_user.last_execution = today;
+      existing_user.in_game = in_game;
+      await set_uid_list(uid_list);
+      return res.json(existing_user);
+    }
+
+    const new_user = {
       discord_id,
       discord_username,
       first_execution: today,
       last_execution: today,
       uid: uid_list.length + 1,
       in_game,
-    });
+    };
+
+    uid_list.push(new_user);
+    await set_uid_list(uid_list);
+    res.json(new_user);
+  } catch (err) {
+    console.error("Error in get_uid:", err);
+    res.status(500).json({ error: "internal_server_error", details: err.message });
   }
-  await set_uid_list(uid_list);
-  return existing_user || uid_list[uid_list.length - 1];
 }
 
 setInterval(cleanup_inactive_users, 72 * 60 * 60 * 1000);
