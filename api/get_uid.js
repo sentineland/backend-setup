@@ -25,7 +25,6 @@ export default async function handler(req, res) {
 
   try {
     let uid_list = (await redis.get('uid_list')) || [];
-    let uids_active = parseInt(await redis.get('uids_active')) || 0;
     let users_injected = parseInt(await redis.get('users_injected')) || 0;
 
     let existing_user = uid_list.find(u => u.discord_id === discord_id);
@@ -45,13 +44,13 @@ export default async function handler(req, res) {
         in_game
       };
       uid_list.push(new_user);
-      uids_active++;
       if (in_game) users_injected++;
       existing_user = new_user;
     }
 
+    const uids_active = uid_list.length;
+
     await redis.set('uid_list', uid_list);
-    await redis.set('uids_active', uids_active);
     await redis.set('users_injected', users_injected);
 
     res.json({ 
