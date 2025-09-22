@@ -48,6 +48,8 @@ export default async function handler(req, res) {
       existing_user = new_user;
     }
 
+    if (users_injected < 0) users_injected = 0;
+
     const uids_active = uid_list.length;
 
     await redis.set('uid_list', uid_list);
