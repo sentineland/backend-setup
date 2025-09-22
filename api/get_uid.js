@@ -52,6 +52,7 @@ export default async function handler(req, res) {
 
     await redis.set('uid_list', uid_list);
     await redis.set('users_injected', users_injected);
+    await redis.set('uids_active', uids_active);
 
     res.json({ 
       ...existing_user, 
